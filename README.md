@@ -1,6 +1,6 @@
 # Learned Modular Multiplication
 
-**A small autoregressive "scratchpad" transformer that learns `(a · b) mod p` as an operation — and clears the third tier of the SAIR Modular Arithmetic Challenge.**
+**A small autoregressive "scratchpad" transformer that learns `(a · b) mod p` as an operation — and clears the first four tiers of the SAIR Modular Arithmetic Challenge, with generalisation that scales nearly flat across operand length.**
 
 Marcos Costa Santos Carreira · Team MCSC (MAC01-T00008)
 
@@ -8,15 +8,15 @@ Marcos Costa Santos Carreira · Team MCSC (MAC01-T00008)
 
 ## Result
 
-On the challenge's official public pipeline (100 problems/tier), the submitted model scores:
+On the challenge's official pipeline (100 problems/tier), the submitted model scores:
 
-| tier 1 | tier 2 | tier 3 | H>90 | overall accuracy |
-|:---:|:---:|:---:|:---:|:---:|
-| 1.00 | 0.99 | **0.93** | **3** | **0.306** |
+| tier 1 | tier 2 | tier 3 | tier 4 | H>90 | overall accuracy |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| 1.00 | 0.97 | 0.95 | **0.96** | **4** | **0.40** |
 
-Deterministic, ~56 s for 1100 problems on CPU. Submission: HuggingFace [`MCarreira/recurrent-v3-ship`](https://huggingface.co/MCarreira/recurrent-v3-ship).
+Deterministic, **5.1 s for 1100 problems** on the official evaluation hardware (≈60× under the 300 s budget). Submission: HuggingFace [`MCarreira/recurrent-v4`](https://huggingface.co/MCarreira/recurrent-v4).
 
-The intellectual core is a **generalisation** result: on tier-3 primes held out of training entirely, the model reaches exact-match **0.82 ± 0.03 across three seeds**, with held-out ≈ train — tier 3 draws from thousands of primes, so this cannot be a lookup.
+The intellectual core is a **generalisation-and-scaling** result. On primes held out of training entirely, the model generalises (it cannot be a lookup: each tier draws from thousands-to-billions of primes) — tier-3 exact-match **0.82 ± 0.03 across three seeds**, held-out ≈ train. And the same recipe, merely widened (one Horner step per operand digit), carries that generalisation across a **doubling of operand length nearly flat**: held-out tier 3 0.93 → tier 4 0.905, within ~0.02. A memorised table falls off a cliff the instant operands grow; a learned algorithm barely bends. That near-flat scaling — not the tier index — is the result.
 
 ## The idea in one paragraph
 
@@ -29,7 +29,7 @@ for each digit b_i of b, most-significant first:
 R ← acc        # the last acc is the answer
 ```
 
-Each generated token is another effective layer, so the decode loop computes what one forward pass provably cannot. The steps are training targets, not hand-coded logic: randomise the weights and the model emits noise. A richer variant (an explicit reduce step, Abacus digit-position embeddings, and a training mix reweighted toward tier 3) then pushes the no-holdout model over the 90% bar.
+Each generated token is another effective layer, so the decode loop computes what one forward pass provably cannot. The steps are training targets, not hand-coded logic: randomise the weights and the model emits noise. A richer variant (an explicit reduce step, Abacus digit-position embeddings) clears tier 3, and **widening the very same recipe** — WIDTH 5→10, one Horner step per digit — clears tier 4 too, at linear cost in operand length (exactly the composition depth the depth-limit theorem demands). Because the cost is linear and the per-step operation never changes, the method scales by construction; the open question above tier 4 is accuracy, not the time budget.
 
 Full argument, ablations, and the compliance case: **[WRITEUP.md](WRITEUP.md)** (or [docs/WRITEUP.pdf](docs/WRITEUP.pdf)). One-page summary: **[ONE_PAGER.md](ONE_PAGER.md)**.
 
@@ -42,7 +42,8 @@ EXPERIMENTS.md                  experiment log: every approach tried, what worke
 dev/train_recurrent.py          the trainer (scratchpad, curriculum, anneal, band weights)
 dev/data.py                     prime pools + balanced/curriculum batch sampling
 models/recurrent_v2/            interleaved-Horner architecture (the generalisation model)
-models/recurrent_v3_ship/       + reduce-step + Abacus embeddings (the H>90=3 submission)
+models/recurrent_v3_ship/       + reduce-step + Abacus embeddings (the H>90=3 model)
+models/recurrent_v4/            same recipe widened to 10-digit operands (the H>90=4 submission)
 run_recurrent_*.py              argument-free runners (open in an IDE, press Run)
 run_check_submission*.py        official-pipeline verification (local + HuggingFace)
 run_upload_hf.py                push a submission dir to HuggingFace
@@ -54,7 +55,7 @@ run_upload_hf.py                push a submission dir to HuggingFace
 
 ```bash
 pip install torch numpy
-python run_recurrent_v3_ship.py     # or run_recurrent_v3_ship_auto.py for chunked, memory-safe runs
+python run_recurrent_v4.py          # the H>90=4 model; _auto.py variants do chunked, memory-safe runs
 ```
 
 The runners are argument-free — edit the `CONFIG` block at the top and run. Training writes a best checkpoint, a resume snapshot, and a `*.metrics.csv` you can watch for plateaus.

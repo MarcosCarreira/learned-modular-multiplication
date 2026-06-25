@@ -80,7 +80,7 @@ def make_batch_curriculum(train_pools, batch, rng, arch, cap, keep_full, band_w=
 
 
 @torch.no_grad()
-def exact_match(model, primes, dev, arch, n=2000, seed=7):
+def exact_match(model, primes, dev, arch, n=2000, seed=7, sub=16):
     if not primes:
         return float("nan")
     rng = random.Random(seed)
@@ -90,10 +90,18 @@ def exact_match(model, primes, dev, arch, n=2000, seed=7):
         p = primes[rng.randrange(len(primes))]
         a = rng.randrange(p); b = rng.randrange(p)
         prompts[i] = arch.build_prompt(a, b, p); ans[i] = (a * b) % p
-    gen = model.generate(to_t(prompts, dev), arch.GEN_LEN).cpu().numpy()
-    R = np.array([arch.from_field(gen[i][arch.R_OFF:arch.R_OFF + arch.WIDTH])
-                  for i in range(n)])
-    return float((R == ans).mean())
+    # Generate in small sub-batches with a cache release between, so the eval's
+    # KV-cache peak is bounded by `sub` sequences (not all `n` at once).
+    correct = 0
+    for s in range(0, n, sub):
+        pc = prompts[s:s + sub]
+        gen = model.generate(to_t(pc, dev), arch.GEN_LEN).cpu().numpy()
+        for j in range(len(pc)):
+            R = arch.from_field(gen[j][arch.R_OFF:arch.R_OFF + arch.WIDTH])
+            correct += int(R == ans[s + j])
+        if dev.type == "mps" and hasattr(torch, "mps"):
+            torch.mps.empty_cache()
+    return correct / n
 
 
 def main():
@@ -135,6 +143,9 @@ def main():
     ap.add_argument("--band-weights", nargs="+", type=float, default=None,
                     help="per-band sampling weights in --bands order (e.g. 0.5 1.0 2.5 to "
                          "oversample tier3); default uniform")
+    ap.add_argument("--empty-cache-every", type=int, default=0,
+                    help="on MPS, release the cached allocator every N training steps "
+                         "(bounds memory growth on long runs; 0 = off)")
     args = ap.parse_args()
     if args.d_model % args.heads != 0:
         raise SystemExit(f"--d-model ({args.d_model}) must be divisible by --heads ({args.heads}).")
@@ -245,6 +256,9 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         opt.step()
         run += loss.item(); steps_since += 1
+        if (args.empty_cache_every and dev.type == "mps" and hasattr(torch, "mps")
+                and step % args.empty_cache_every == 0):
+            torch.mps.empty_cache()   # release accumulated MPS blocks DURING training
 
         now = time.time()
         capped = args.minutes and (now - t0) / 60.0 >= args.minutes
@@ -262,6 +276,8 @@ def main():
             run, steps_since, last_print = 0.0, 0, now
             if eval_due:
                 model.eval()
+                if dev.type == "mps" and hasattr(torch, "mps"):
+                    torch.mps.empty_cache()      # drop the training workspace BEFORE eval gen
                 parts, tier_val, tier_tr = [], {}, {}
                 for band in args.bands:
                     tr = exact_match(model, pools.train[band], dev, arch, n=args.eval_n)

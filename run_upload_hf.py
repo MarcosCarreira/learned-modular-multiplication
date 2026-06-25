@@ -10,14 +10,19 @@ Uploads ONLY the files a submission needs (manifest.json, model.py, weights),
 keeping junk like __pycache__ out of the repo. Prints repo_id + commit_hash —
 that pair is what you give the organizers.
 """
+import os
 import sys
 from pathlib import Path
+
+# The "xet" upload backend can hang mid-file on the FIRST push to a new repo.
+# Force the classic LFS multipart path, which is slower-listed but far more robust.
+os.environ["HF_HUB_DISABLE_XET"] = "1"
 
 from huggingface_hub import HfApi
 
 # ----------------------------- CONFIG -----------------------------
-SUBMISSION = "models/recurrent_v3_ship"
-REPO_ID    = "MCarreira/recurrent-v3-ship"   # submission #5: H>90=3, OA 0.306
+SUBMISSION = "models/recurrent_v4"
+REPO_ID    = "MCarreira/recurrent-v4"   # #6 candidate: H>90=4, OA 0.400. (docker "timeout" was x86-on-ARM emulation; Playground ran #5 in 0.65s -> v4 is fine. Confirm v4 on the Playground after upload.)
 PRIVATE    = True            # keep private while testing; make public before the deadline
 TOKEN      = None            # None -> use your cached `huggingface-cli login`
 # ------------------------------------------------------------------

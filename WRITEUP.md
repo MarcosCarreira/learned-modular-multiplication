@@ -1,7 +1,7 @@
 # Show Your Work: Chain-of-Thought Scratchpads for Learned Modular Multiplication
 
 **Marcos Costa Santos Carreira** — Team MCSC (MAC01-T00008)
-*SAIR Modular Arithmetic Challenge · methods note, draft 2026-06-11*
+*SAIR Modular Arithmetic Challenge · methods note, rev. 2026-06-25*
 
 > The naive question, the one a number theorist is too polite to ask out loud:
 > if a transformer can be coaxed into modular *addition*, why does it fall over
@@ -20,7 +20,19 @@ on the official public benchmark it scores **tier-3 0.93 → `H>90 = 3`, overall
 accuracy 0.306** (deterministic, ~56 s for 1100 problems on CPU). So the
 progression is memorisation → generalisation (held-out ≈ train on unseen primes)
 → a *solved* third tier (p < 10⁵), all from trained parameters with no hand-coded
-arithmetic.
+arithmetic. And the headline result is that the operation **scales**: the same
+recipe, only widened (WIDTH 5 → 10, one Horner step per digit), **clears all four
+tiers on held-out unseen primes** — tier 2 0.96, tier 3 0.93, tier 4 **0.905**
+(p < 2³², ten-digit operands; `H>90 = 4` on the holdout). Generalisation carries
+across a doubling of operand length **nearly flat** — the harder ten-digit tier
+within ~0.02 of the five-digit one. A memorised table falls off a cliff the moment
+operands grow; a learned algorithm barely bends. That near-flat scaling, not the
+tier index, is the result. And it is now also the **live submission**: on the
+official evaluation hardware the same widened model clears all four scored tiers
+(tier 1 1.00, tier 2 0.97, tier 3 0.95, tier 4 **0.96**), `H>90 = 4`, overall
+accuracy **0.40**, in **5.1 s** for 1100 problems against a 300 s budget — so the
+result is not a research artefact held back by cost; it is fast, deterministic, and
+on the board.
 
 ## The naive question
 
@@ -136,7 +148,8 @@ baseline that does not generalise (Lauter et al.).
 **Provenance of the headline numbers** (so nothing is mistaken for cherry-picking):
 0.83 / 0.82 are *held-out, truly-unseen* estimates from the Horner model (the
 tier-3 0.82 is the three-seed mean, 0.79 / 0.82 / 0.85) — the *generalisation*
-claim. The **submitted** model (`recurrent-v3-ship`, no-holdout) instead *fits*
+claim. The tier-3 **no-holdout** model (`recurrent-v3-ship`, the `H>90 = 3`
+predecessor to the live tier-4 submission) instead *fits*
 the whole in-band prime set and is scored on the official public benchmark
 (100 problems/tier): tier 1 1.00, tier 2 0.99, **tier 3 0.93**, overall accuracy
 **0.306**, `H>90 = 3`, deterministic. So the unseen-prime result (0.82) is the
@@ -226,6 +239,63 @@ the official public benchmark (100 problems/tier): tier 1 **1.00**, tier 2
 budget). The same recurrence argument carries through: randomise the weights and
 it emits noise; the answer is computed, step by step, by trained parameters.
 
+## Same operation, more digits: the scaling is the result
+
+The sharpest result here is not a cleared tier — it is that the *operation
+scales*, and that is the thing a memorised table can never do. Enlarge the
+operands and a lookup falls to the floor: that is exactly what the feed-forward
+encoder does, and what the hand-built carry circuits of the "trivial" file do past
+five digits. A learned procedure scales instead — and this one does, **by
+construction**. Going from tier 3 (p < 10⁵, ≤ 5-digit operands) to tier 4
+(p < 2³², ≤ 10-digit operands) changes nothing about the method: same legal
+reduce-first, same `a · digit` Horner that never forms the product. We only widen
+the digit fields (WIDTH 5 → 10) and run more steps — **one Horner step per digit**.
+The cost model is linear in the operand length, which is precisely the composition
+*depth* the Peng–Narayanan–Papadimitriou bound says the task needs; the recurrence
+supplies that depth, and supplies more of it automatically as the operand grows.
+
+And what scales is the property that matters — generalisation to primes never
+trained on. The widened model (WIDTH = 10, base-10 `a · digit` Horner, ten steps)
+**clears all four tiers on held-out, unseen primes**, with almost no loss across
+the operand-length doubling:
+
+| held-out, **unseen** primes | tier 2 | tier 3 (≤ 5-digit) | tier 4 (≤ 10-digit) |
+|---|---|---|---|
+| WIDTH-10 interleaved-Horner scratchpad | 0.96 | **0.93** | **0.905** |
+
+(Single seed; converged over a finishing LR anneal; tier-4 held 0.89–0.93 across
+eight evals, mean ≈ 0.905.) Read that table again: the *harder* tier — ten-digit
+operands, primes drawn from billions — generalises within ~0.02 of the five-digit
+tier. The operation does not just survive a doubling of operand length, it carries
+across it nearly flat. That is far past "graceful degradation": a memorised table
+falls off a cliff the instant the operands grow; this **bends so little it barely
+registers** — the single strongest piece of evidence in this note that the model
+learned the *operation*, not a per-prime table. The only changes from the tier-3
+model are wider digit fields and more Horner steps — no new hand-coded arithmetic,
+the answer still the model's own generated final `acc`.
+
+**On the official benchmark, not just the holdout.** The same widened model was
+then scored by the challenge's own evaluation on its own hardware (1100 problems,
+100 per tier): tier 1 **1.00**, tier 2 **0.97**, tier 3 **0.95**, tier 4 **0.96**
+— `H>90 = 4`, overall accuracy **0.40**, deterministic. Because tiers 3–4 draw
+their primes from thousands-to-billions, the benchmark primes are effectively
+unseen to the model, so this official number *is* the generalisation result, now
+independently confirmed off our own holdout. And it is cheap: the full 1100-problem
+set decodes in **5.1 seconds** against the 300-second budget — roughly sixty times
+under. (A cautionary aside for anyone reproducing this: an `x86`-emulated local
+Docker run inflated the wall-clock by two orders of magnitude and looked like a
+timeout; the real hardware ran it in seconds. Measure on the target environment,
+not an emulated proxy.) The efficiency axis the organisers floated — score speed,
+not just accuracy — this submission already satisfies.
+
+The competition scores this as a tier index (`H>90 = 4`). What it *is*
+is a learned, generalising, length-scalable algorithm for modular multiplication —
+and the scaling, not the index, is the result. *(Earlier we said the radix could be
+raised to cut the step count; it cannot — a base-1000 chunk makes each step a
+3-digit × 3-digit multiply the network never learns, stalling tier 2 at 0.34. The
+trivial `a · digit` step is load-bearing: per-step learnability dominates
+step-count. That negative is itself part of the result.)*
+
 ## A note on the "it's trivial" file
 
 Mid-competition, a strong entrant argued the task is trivial and posted
@@ -252,6 +322,93 @@ learns the very thing the construction concedes a trained network cannot — and
 generalises across primes it never saw. Representability was never the question;
 learning was.
 
+## Where this stands in the literature
+
+*Restraint first: the components here are borrowed; the contribution is their
+composition and the result.*
+
+The terrain splits, and this work is on the hard side of it. Modular **addition**
+is largely understood — grokking and clean Fourier / closed-form circuits (Power
+et al. 2022; Gromov 2023; Zhong et al. 2023; McCracken et al. 2025); addition
+mod p is a rotation that networks learn and that interpretability can fully open.
+None of that is this problem. Modular **multiplication** is the recognised hard
+case, and the directly relevant precursor is the challenge organisers' own paper:
+Lauter, Li, Maughan, Newton & Srivastava (2024) tried circular regression and a
+one-shot seq2seq transformer and reported poor generalisation — read as evidence
+of the task's hardness. The delta here is exactly the change of method: a one-shot
+map is depth-starved (Peng, Narayanan & Papadimitriou 2024 — bounded depth cannot
+compose), and the autoregressive scratchpad supplies the missing depth, turning
+their negative into a positive (held-out ≈ train across tiers).
+
+Two precisions keep the claim honest. First, this is **not** "the first network to
+learn modular multiplication": Charton & Kempe (2024, repeated examples) and
+Saxena et al. (2024, custom data, an LWE setting) already learn it *in-distribution*
+at fixed or structured moduli. The sharper delta is **cross-prime generalisation**
+— the operation transferring to moduli never trained on, the challenge's actual
+open question, where the seq2seq baseline fell short — and the **scaling** of that
+generalisation across operand length. Second, the scratchpad idea (Lee et al. 2023;
+Nye et al. 2021), the Abacus digit-position embeddings (McLeish et al. 2024), the
+operand curriculum, and the depth-limit theory are all off the shelf; the novelty
+is the assembly and the result, not the parts.
+
+Stated with the restraint it deserves: this *appears* to be a positive
+cross-prime-generalisation-and-scaling result for learned modular multiplication,
+where the organisers' own baseline was negative, with the depth-versus-recurrence
+argument as the mechanism. The freshest single angle is the scaling-as-discriminator
+— graceful degradation across a doubling of operand length as the signature of a
+learned operation rather than a memorised table — a framing not, as far as we know,
+applied to modular multiplication before, though length generalisation for
+*non-modular* integer arithmetic is established (McLeish et al.).
+
+**Why this wasn't done before.** The approach sits in the gap between two
+communities that did not overlap. The modular-arithmetic-learning line came from
+cryptography / math-ML (Lauter; Charton & Kempe; Saxena; the LWE attacks) and used
+one-shot seq2seq or regression — and for a *crypto-attack* question a taught
+scratchpad is beside the point: you want the network to learn the map black-box, so
+handing it the worked steps undercuts the very thing being tested. The
+chain-of-thought line, meanwhile, came from LLM reasoning (Nye et al.; Lee et al.)
+and was aimed at word problems and ordinary integer arithmetic, not modular
+multiplication or transfer across moduli. Nobody pointed one at the other. What
+changed is the competition's framing: it makes a *learned-from-parameters*
+scratchpad legitimate (the answer is computed, not looked up) and asks specifically
+for *generalisation to unseen primes* — the exact question the scratchpad answers,
+and one you would not even instrument (hold out primes, measure cross-modulus
+transfer) without that framing. The enabling parts — the depth-limit result, Abacus
+embeddings, the CoT-arithmetic recipes — only aligned recently. We claim no more
+than this: the incentives and the framing pointed elsewhere, and we are not aware
+of prior work assembling these pieces for cross-prime modular-multiplication
+generalisation and its scaling.
+
+## Limitations, and what would make this a paper
+
+What this is **not**, plainly:
+
+- **Not mechanistic.** The addition literature exhibits the learned circuit; here
+  we show behaviour, not internals. A probe / activation-patching pass to localise
+  what the scratchpad computes is the single biggest upgrade.
+- **Not a theorem.** An empirical existence-and-scaling result; no guarantee the
+  scratchpad generalises in general.
+- **Small-scale relative to the motivation.** The cryptographic line behind this
+  work (Lauter; Saxena; SALSA, Wenger et al. 2022) concerns hundreds of digits and
+  structured LWE; this reaches ten. The contribution is to the
+  learnability/generalisation science, not to anything cryptographic.
+- **Uneven rigour across tiers.** Tier 3 carries a three-seed band (0.82 ± 0.03);
+  the WIDTH-10 tier-4 result (0.905, `H>90 = 4` held out) is a single converged
+  run — stable across eight post-anneal evals, but one seed.
+
+The checklist to turn this from a competition result into a citable paper:
+
+1. **Multi-seed tier 4** — match the tier-3 rigour; report a band, not a point.
+2. **Radix ablation** — base-10 vs base-100 vs base-1000, already half-run: the
+   base-1000 failure (the multi-digit per-step multiply is unlearnable — per-step
+   *learnability* beats step-count) is itself a finding worth stating cleanly.
+3. **A look inside** — even a linear-probe confirmation that the intermediate `acc`
+   tokens carry the running reduction lifts it from black-box to mechanism-adjacent.
+4. **A same-compute baseline head-to-head** — seq2seq vs scratchpad — to *quantify*
+   the depth-versus-recurrence claim rather than inherit it from Lauter's report.
+5. **Push the scaling curve** — tier 5+ until it breaks, charting where linear-depth
+   meets the time-budget / fidelity wall, making the scaling law quantitative.
+
 ## The fine print (compliance)
 
 Answer from trained parameters (weight perturbation collapses it). Only
@@ -274,7 +431,9 @@ recommends.)
 ## Reproducibility
 
 Argument-free runners (`run_*.py`) in the team repo; the scored submission is the
-HuggingFace model `MCarreira/recurrent-v3-ship` (the `H>90 = 3` model above);
+HuggingFace model `MCarreira/recurrent-v4` @ commit
+`467ad5d7180bbfae21b55185cfeca22e2e18b458` (the WIDTH-10 `H>90 = 4` model above;
+its tier-3 predecessor `MCarreira/recurrent-v3-ship` reaches `H>90 = 3`);
 trainer `dev/train_recurrent.py`; standard `ModularMultiplicationModel` interface;
 full experiment log in `EXPERIMENTS.md`. Every number here is reproduced by the
 official local pipeline (`modchallenge evaluate` / `evaluate-hf`) — nothing is a
@@ -300,3 +459,17 @@ author's direction and verification.*
 - McLeish et al. *Transformers Can Do Arithmetic with the Right Embeddings
   (Abacus embeddings).* arXiv:2405.17399.
 - Lee et al. *Teaching Arithmetic to Small Transformers.* 2023.
+- Nye et al. *Show Your Work: Scratchpads for Intermediate Computation with
+  Language Models.* 2021.
+- Power, Burda, Edwards, Babuschkin, Misra. *Grokking: Generalization Beyond
+  Overfitting on Small Algorithmic Datasets.* arXiv:2201.02177.
+- Gromov. *Grokking Modular Arithmetic.* arXiv:2301.02679.
+- Zhong, Liu, Tegmark, Andreas. *The Clock and the Pizza: Two Stories in
+  Mechanistic Explanation of Neural Networks.* arXiv:2306.17844.
+- Li, Liang, Shi, Song, Zhou. *Fourier Circuits in Neural Networks and
+  Transformers: A Case Study of Modular Arithmetic with Multiple Inputs.*
+  arXiv:2402.09469.
+- McCracken, Moisescu-Pareja, Létourneau, Precup, Love. *Uncovering a Universal
+  Abstract Algorithm for Modular Addition in Neural Networks.* arXiv:2505.18266.
+- Wenger, Chen, Lauter, Charton. *SALSA: Attacking Lattice Cryptography with
+  Transformers.* arXiv:2207.04785.

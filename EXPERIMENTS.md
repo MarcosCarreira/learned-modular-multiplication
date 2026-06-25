@@ -13,7 +13,17 @@ Official public-benchmark pipeline (100 problems/tier), ranked by `H>90` then OA
 | #2 cross_prime_v1 (feed-forward) | 0.157 | ~0.49 | floor | 1 | superseded |
 | #3 recurrent-ship (digit scratchpad) | 0.212 | 0.98 | — | 2 | superseded |
 | #4 recurrent-v2-ship (Horner) | 0.283 | 0.97 | 0.72 | 2 | superseded |
-| **#5 recurrent-v3-ship (Horner + reduce-step + Abacus, tier3-oversampled anneal)** | **0.306** | **0.99** | **0.93** | **3** | **LIVE & REGISTERED** `MCarreira/recurrent-v3-ship` @ `01f6f8a3fa56e3a3c17852dcf468560a0b6b8b16` |
+| #5 recurrent-v3-ship (Horner + reduce-step + Abacus, tier3-oversampled anneal) | 0.306 | 0.99 | 0.93 | 3 | superseded by #6 — `MCarreira/recurrent-v3-ship` @ `01f6f8a3fa56e3a3c17852dcf468560a0b6b8b16` |
+| **#6 recurrent-v4 (WIDTH-10, base-10 `a·digit` Horner, tier4-anneal)** | **0.40** | **0.97** | **0.95** (T4 **0.96**) | **4** | **LIVE & REGISTERED** `MCarreira/recurrent-v4` @ `467ad5d7180bbfae21b55185cfeca22e2e18b458` |
+
+**#6 cleared tier 4** on the official SAIR Playground (1100 cases, the challenge's
+own hardware, 2026-06-25): tier1 1.00, tier2 0.97, tier3 0.95, **tier4 0.96** →
+`H>90 = 4`, OA **0.40**, **5.107 s** for 1100 problems (≈60× under the 300 s
+budget), 43 MB, deterministic. Beats #5 on both keys. **Timing caveat learned the
+hard way:** a local `x86`-emulated Docker run (Docker Desktop on Apple silicon →
+QEMU) clocked the same model at 600–900 s and looked like a budget timeout; the
+authoritative Playground ran it in ~5 s. **Trust the Playground, not emulated local
+Docker, for timing.**
 
 **#5 cleared tier 3** (0.93 ≥ 0.90 on the official benchmark) → `H>90 = 3`, OA 0.306,
 deterministic, ~56 s/1100 CPU. Cloud-verified via `run_check_submission_hf.py`.
@@ -23,6 +33,24 @@ private final eval uses a secret seed; tier-3 0.93 on 100 samples is ~1.2 SE abo
 0.90 (thin margin) — resume `run_recurrent_v3_ship_auto.py` for more margin and
 update before the 2026-08-12 deadline if desired. Beats every reference baseline
 (dlp_grokking 0.127).
+
+**v4 — THE SCALING RESULT (REGISTERED AS #6, 2026-06-25; H>90=4 official).** `recurrent_v4` = same
+recipe widened to tier 4: WIDTH 5→10, base-10 `a·digit` Horner (NB=10 steps, one
+per digit), d384/8L, holdout, tier-4-oversampled. First tried base-1000 chunks
+(NB=4) to cut steps — **abandoned**: the 3-digit×3-digit per-step multiply was
+unlearnable (tier-2 stalled 0.34, tier-3 stuck at 0). Lesson: per-step
+learnability > step-count. Base-10 (v3's proven trivial step, widened) works — and **CLEARED TIER 4 ON THE
+HOLDOUT**: after a finishing LR anneal (forced by shortening STEPS 200k→120k), v4
+clears **all four tiers on UNSEEN primes** — tier-2 0.96, tier-3 0.93, tier-4
+**0.905** (held 0.89–0.93 across 8 post-anneal evals), `H>90 = 4` on the holdout,
+frontierVal ~1.95. tier-4 climbed 0.26→0.56→0.67→0.76 (plateau) → **0.91** (anneal).
+**Main result = the OPERATION SCALES NEARLY FLAT**: same algorithm, more digits,
+generalisation carries across the operand-length doubling within ~0.02 (tier-3 0.93
+→ tier-4 0.905) instead of collapsing like a table — strongest evidence it learned
+the operation, citable independent of the leaderboard. Single seed (converged).
+Cost model linear (NB steps = digits) = the P-N-P composition depth, supplied by
+recurrence. Memory pinned <~31GB via batch 32 + per-step `mps.empty_cache` +
+sub-batched eval + 25-min chunk restarts. Folded into `WRITEUP` as the headline.
 
 ## Results log (2026-06-08/09)
 
@@ -132,7 +160,3 @@ Answer from trained params (weight-perturbation collapses it); `a%p`, `b%p`
 legal two-operand reductions only; no `a*b%p` formed in code; no sympy/Barrett/
 CRT/lookup in the forward path; deterministic on CPU (`MODCH_FORCE_CPU=1`);
 dev-only sympy stays in `dev/`, never in a submission dir.
-
----
-
-*Experiments, code, and a first draft of the write-up were produced with the assistance of a large language model (Claude), under the author's direction and verification.*
