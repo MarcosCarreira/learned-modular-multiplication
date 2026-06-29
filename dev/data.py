@@ -82,6 +82,7 @@ BANDS: dict[str, tuple[int, int]] = {
     "tier2": (4, 8),    # [16, 256)   ~ 48 primes
     "tier3": (9, 16),   # [512, 65536) ~ 6500 primes
     "tier4": (17, 32),  # [2^17, 2^32) -- sampled, huge
+    "tier5": (33, 64),  # [2^33, 2^64) -- sampled, ~20-digit primes (2^64 = 20 digits)
 }
 
 

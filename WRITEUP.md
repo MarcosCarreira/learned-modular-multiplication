@@ -32,7 +32,12 @@ official evaluation hardware the same widened model clears all four scored tiers
 (tier 1 1.00, tier 2 0.97, tier 3 0.95, tier 4 **0.96**), `H>90 = 4`, overall
 accuracy **0.40**, in **5.1 s** for 1100 problems against a 300 s budget — so the
 result is not a research artefact held back by cost; it is fast, deterministic, and
-on the board.
+on the board. Widen the same recipe once more, to twenty-digit operands, and the
+operation still generalises — tier 5 **0.80** on the official benchmark — tracing a
+gentle curve (0.98 / 0.90 / 0.88 / 0.80 across 2 / 5 / 10 / 20 digits) that bends but
+never breaks. (That twenty-digit model's tier 5 sits below the 90% bar, so the
+ten-digit `H>90 = 4` model stays the submission; the wider run is the scaling
+evidence, not a leaderboard gain.)
 
 ## The naive question
 
@@ -288,6 +293,34 @@ timeout; the real hardware ran it in seconds. Measure on the target environment,
 not an emulated proxy.) The efficiency axis the organisers floated — score speed,
 not just accuracy — this submission already satisfies.
 
+**One tier further, to twenty digits.** We then widened the *same* recipe once
+more — the single literal `WIDTH 10 → 20`, nothing else — to reach tier 5
+(p < 2⁶⁴, ≤ 20-digit operands, twenty Horner steps). Warm-started from the tier-4
+model and run through the same curriculum-then-anneal, it scores on the official
+benchmark:
+
+| official benchmark | tier 2 | tier 3 (≤5d) | tier 4 (≤10d) | tier 5 (≤20d) |
+|---|---|---|---|---|
+| WIDTH-20 scratchpad | 0.98 | 0.90 | 0.88 | **0.80** |
+
+(One run; 53.5 s for 1100 problems — about ten times the WIDTH-10 model, still a
+fraction of the 300 s budget.) The operation keeps generalising to unseen primes a
+*full doubling* of operand length past where the tier-4 model stopped: twenty-digit
+products, primes drawn from quintillions, and it still lands four in five. The curve
+across 2 → 5 → 10 → 20 digits — 0.98, 0.90, 0.88, 0.80 — slopes off by only ~0.18
+end to end and never falls off the cliff a lookup would the instant operands grow.
+That gentle decline, traced by *one* algorithm over a sixteen-fold range of operand
+magnitude, is the scaling claim in its strongest form.
+
+Two honest qualifications. First, tier 5's 0.80 is *below* the 90% bar, so this
+model's frontier index is `H>90 = 3`; the tier-4 model remains the leaderboard
+submission. Second, this twenty-digit model's tier-3 and tier-4 (0.90, 0.88) sit
+slightly *under* the ten-digit model's (0.95, 0.96): spreading a fixed ~11M-parameter
+budget across five tiers of longer sequences costs some per-tier sharpness. So the
+claim is precisely "the same recipe *reaches* twenty digits with graceful
+degradation," not "wider is uniformly better." The scaling is real, and it is gentle
+— but it is not free.
+
 The competition scores this as a tier index (`H>90 = 4`). What it *is*
 is a learned, generalising, length-scalable algorithm for modular multiplication —
 and the scaling, not the index, is the result. *(Earlier we said the radix could be
@@ -390,11 +423,14 @@ What this is **not**, plainly:
   scratchpad generalises in general.
 - **Small-scale relative to the motivation.** The cryptographic line behind this
   work (Lauter; Saxena; SALSA, Wenger et al. 2022) concerns hundreds of digits and
-  structured LWE; this reaches ten. The contribution is to the
+  structured LWE; this reaches twenty (tier 5, p < 2⁶⁴). The contribution is to the
   learnability/generalisation science, not to anything cryptographic.
 - **Uneven rigour across tiers.** Tier 3 carries a three-seed band (0.82 ± 0.03);
-  the WIDTH-10 tier-4 result (0.905, `H>90 = 4` held out) is a single converged
-  run — stable across eight post-anneal evals, but one seed.
+  the WIDTH-10 tier-4 result (`H>90 = 4`, official 0.96) and the WIDTH-20 tier-5
+  result (0.80) are each a single converged run. The twenty-digit run also shows the
+  honest cost of reach: its tier-3/4 (0.90/0.88) fall a little below the ten-digit
+  model's (0.95/0.96), and its tier-5 0.80 is below the 90% bar — so it is the
+  scaling evidence, not a leaderboard improvement over the ten-digit model.
 
 The checklist to turn this from a competition result into a citable paper:
 
@@ -406,8 +442,13 @@ The checklist to turn this from a competition result into a citable paper:
    tokens carry the running reduction lifts it from black-box to mechanism-adjacent.
 4. **A same-compute baseline head-to-head** — seq2seq vs scratchpad — to *quantify*
    the depth-versus-recurrence claim rather than inherit it from Lauter's report.
-5. **Push the scaling curve** — tier 5+ until it breaks, charting where linear-depth
-   meets the time-budget / fidelity wall, making the scaling law quantitative.
+5. **Push the scaling curve** — *partly done*: tier 5 (twenty digits) reads 0.80 on
+   the official benchmark, so the curve is 0.98 / 0.90 / 0.88 / 0.80 across 2 / 5 / 10
+   / 20 digits and is bending, not breaking. What remains is (a) multi-seed bands at
+   each width, (b) more capacity (the fixed ~11M budget, spread across five tiers of
+   longer sequences, is what pulls tier 5 below the bar — a larger model is the test
+   of whether the slope is fundamental or just capacity-limited), and (c) tier 6+ to
+   find where linear-depth finally meets the fidelity wall.
 
 ## The fine print (compliance)
 
@@ -433,7 +474,8 @@ recommends.)
 Argument-free runners (`run_*.py`) in the team repo; the scored submission is the
 HuggingFace model `MCarreira/recurrent-v4` @ commit
 `467ad5d7180bbfae21b55185cfeca22e2e18b458` (the WIDTH-10 `H>90 = 4` model above;
-its tier-3 predecessor `MCarreira/recurrent-v3-ship` reaches `H>90 = 3`);
+its tier-3 predecessor `MCarreira/recurrent-v3-ship` reaches `H>90 = 3`, and the
+WIDTH-20 scaling model `MCarreira/recurrent-v5` reaches tier 5 0.80 / `H>90 = 3`);
 trainer `dev/train_recurrent.py`; standard `ModularMultiplicationModel` interface;
 full experiment log in `EXPERIMENTS.md`. Every number here is reproduced by the
 official local pipeline (`modchallenge evaluate` / `evaluate-hf`) — nothing is a

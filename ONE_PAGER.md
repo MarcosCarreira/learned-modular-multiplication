@@ -25,12 +25,15 @@ Each generated token is another effective layer, so the decode loop computes wha
 | Horner scratchpad | 0.83 | **0.82 ± 0.03** | — | — |
 | + reduce-step + Abacus (v3) | — | — | — | t3 0.93 → H>90=3, OA 0.306 |
 | **+ widened to 10 digits (v4)** | 0.96 | 0.93 | **0.905** | **t4 0.96 → H>90=4, OA 0.40** |
+| + widened to 20 digits (v5) | — | — | — | t2 0.98 / t3 0.90 / t4 0.88 / **t5 0.80** → H>90=3, OA 0.47 |
+
+**The scaling, one tier further.** Widening the *same* recipe once more (WIDTH 10→20, twenty Horner steps) reaches tier 5 (p < 2⁶⁴, ≤20-digit operands). Official benchmark: tier 2 0.98 / tier 3 0.90 / tier 4 0.88 / **tier 5 0.80** — the operation still generalising to unseen primes a full doubling of operand length further, the curve 0.98/0.90/0.88/0.80 across 2/5/10/20 digits declining only ~0.18 over a 16× range rather than collapsing. Honest cost: tier 5's 0.80 is below the 90% bar (so this model is H>90=3 and the 10-digit model stays the submission), and its tier 3/4 sit a little below the 10-digit model's — a fixed ~11M-parameter budget spread across five tiers of longer sequences. The claim is "the same recipe *reaches* 20 digits with graceful degradation," not "wider is uniformly better."
 
 **Compliance.** Answer from trained parameters (weight perturbation collapses it); only per-argument `a%p`, `b%p` reductions; scratchpad steps are training targets, not forward-pass logic; no symbolic libraries, no hand-coded long multiplication/division, no Barrett/Montgomery/CRT, no input-indexed lookups; deterministic on CPU.
 
 **One honest margin note.** The tier-4 result is a single converged seed (stable across eight post-anneal evaluations); multi-seed bands, as on tier 3, would harden it against the secret-seed final eval. The robust claim is the *generalisation-and-scaling* — held-out ≈ train on unseen primes, carried nearly flat across operand length — of which the cleared tiers are a consequence.
 
-**Links.** Submission: `MCarreira/recurrent-v4`. Full methods note and argument-free reproduction runners (`run_*.py`, `modchallenge evaluate-hf`) in the team repo.
+**Links.** Submission: `MCarreira/recurrent-v4` (H>90=4); 20-digit scaling model: `MCarreira/recurrent-v5` (tier 5 0.80). Full methods note and argument-free reproduction runners (`run_*.py`, `modchallenge evaluate-hf`) in the team repo.
 
 ---
 

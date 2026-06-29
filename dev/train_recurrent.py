@@ -85,7 +85,10 @@ def exact_match(model, primes, dev, arch, n=2000, seed=7, sub=16):
         return float("nan")
     rng = random.Random(seed)
     prompts = np.empty((n, arch.PROMPT_LEN), np.int64)
-    ans = np.empty(n, np.int64)
+    # ans holds the true product mod p, which at tier 5+ reaches ~2^64 — beyond
+    # int64's range. Keep it as Python ints (unbounded) to avoid OverflowError;
+    # prompts stays int64 (it only holds small digit/marker tokens 0..13).
+    ans = [0] * n
     for i in range(n):
         p = primes[rng.randrange(len(primes))]
         a = rng.randrange(p); b = rng.randrange(p)
@@ -128,6 +131,12 @@ def main():
     ap.add_argument("--print-secs", type=float, default=0.0,
                     help="cheap heartbeat (step/loss/curr/throughput, NO eval) every N seconds")
     ap.add_argument("--eval-n", type=int, default=2000)
+    ap.add_argument("--eval-sub", type=int, default=16,
+                    help="sequences generated at once during eval (lower = less MPS "
+                         "memory at long seq lengths; e.g. 4 for WIDTH-20 v5)")
+    ap.add_argument("--eval-val-only", action="store_true",
+                    help="skip the train-pool eval; val (held-out) is the ranked metric "
+                         "and held-out~=train is established -> ~halves eval time")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--model-dir", default=str(SUB_DIR),
                     help="submission dir whose model.py defines the architecture")
@@ -276,14 +285,23 @@ def main():
             run, steps_since, last_print = 0.0, 0, now
             if eval_due:
                 model.eval()
+                # Insurance: persist a resumable LATEST snapshot BEFORE the (expensive,
+                # occasionally fragile) generation eval, so a crash in eval never loses
+                # the chunk's training progress. Overwritten with real metrics after eval.
+                torch.save({"state_dict": model.state_dict(), "config": model.config,
+                            "bands": args.bands, "h90": -1, "frontier_val": -1.0,
+                            "step": step}, str(args.out) + ".latest")
+                torch.save(opt.state_dict(), str(args.out) + ".latest.opt")
                 if dev.type == "mps" and hasattr(torch, "mps"):
                     torch.mps.empty_cache()      # drop the training workspace BEFORE eval gen
                 parts, tier_val, tier_tr = [], {}, {}
                 for band in args.bands:
-                    tr = exact_match(model, pools.train[band], dev, arch, n=args.eval_n)
-                    va = exact_match(model, pools.val[band], dev, arch, n=args.eval_n)
+                    va = exact_match(model, pools.val[band], dev, arch, n=args.eval_n, sub=args.eval_sub)
+                    tr = (float("nan") if args.eval_val_only
+                          else exact_match(model, pools.train[band], dev, arch, n=args.eval_n, sub=args.eval_sub))
                     tier_val[band] = va; tier_tr[band] = tr
-                    parts.append(f"{band}[tr {tr:.3f} | val {va:.3f}]")
+                    parts.append(f"{band}[val {va:.3f}]" if args.eval_val_only
+                                 else f"{band}[tr {tr:.3f} | val {va:.3f}]")
                 if dev.type == "mps" and hasattr(torch, "mps"):
                     torch.mps.empty_cache()      # release MPS blocks after eval gen
                 h90, frontier = data.frontier_key(tier_val)

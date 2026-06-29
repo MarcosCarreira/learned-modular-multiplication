@@ -15,6 +15,22 @@ Official public-benchmark pipeline (100 problems/tier), ranked by `H>90` then OA
 | #4 recurrent-v2-ship (Horner) | 0.283 | 0.97 | 0.72 | 2 | superseded |
 | #5 recurrent-v3-ship (Horner + reduce-step + Abacus, tier3-oversampled anneal) | 0.306 | 0.99 | 0.93 | 3 | superseded by #6 — `MCarreira/recurrent-v3-ship` @ `01f6f8a3fa56e3a3c17852dcf468560a0b6b8b16` |
 | **#6 recurrent-v4 (WIDTH-10, base-10 `a·digit` Horner, tier4-anneal)** | **0.40** | **0.97** | **0.95** (T4 **0.96**) | **4** | **LIVE & REGISTERED** `MCarreira/recurrent-v4` @ `467ad5d7180bbfae21b55185cfeca22e2e18b458` |
+| recurrent-v5 (WIDTH-20, same recipe widened, tier5-anneal) | 0.47 | 0.98 | 0.90 (T4 0.88, **T5 0.80**) | 3 | NOT submitted — scaling result `MCarreira/recurrent-v5` @ `3a6a45aea9...e54569ff52` |
+
+**recurrent-v5 — THE 20-DIGIT SCALING POINT (official Playground, 2026-06-28).**
+Same recipe, one literal widened (`WIDTH 10→20`), warm-started from v4, curriculum
+1→20 digits then finishing anneal. Official: T1 1.00, T2 0.98, T3 0.90, T4 0.88,
+**T5 0.80**, OA 0.47, **53.5 s**/1100 (≈10× v4, still well under 300 s budget), 44 MB.
+**Frontier T3** — tier4 came in 0.88, *just* under the 0.90 bar (dev eval wobbled
+0.90–0.93; the official seed resolved below), so v5 is `H>90 = 3` and **v4 stays the
+live submission** (H>90=4 > 3 on the primary key; would have been a downgrade to
+swap). v5's value is the **scaling curve 0.98 / 0.90 / 0.88 / 0.80 across 2/5/10/20
+digits** — gentle ~0.18 decline over a 16× operand-magnitude range, the operation
+generalising to 20-digit unseen primes. Honest cost: v5's T3/T4 (0.90/0.88) sit
+below v4's (0.95/0.96) — a fixed ~11M-param budget spread across five tiers of longer
+sequences loses per-tier sharpness; "reaches 20 digits with graceful degradation,"
+not "wider is uniformly better." Making v5 a *safe* H>90=4 (or H>90=5) would need a
+bigger model + much more compute for marginal-to-no leaderboard gain → not pursued.
 
 **#6 cleared tier 4** on the official SAIR Playground (1100 cases, the challenge's
 own hardware, 2026-06-25): tier1 1.00, tier2 0.97, tier3 0.95, **tier4 0.96** →
