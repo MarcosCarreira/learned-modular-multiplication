@@ -16,6 +16,24 @@ Official public-benchmark pipeline (100 problems/tier), ranked by `H>90` then OA
 | #5 recurrent-v3-ship (Horner + reduce-step + Abacus, tier3-oversampled anneal) | 0.306 | 0.99 | 0.93 | 3 | superseded by #6 — `MCarreira/recurrent-v3-ship` @ `01f6f8a3fa56e3a3c17852dcf468560a0b6b8b16` |
 | **#6 recurrent-v4 (WIDTH-10, base-10 `a·digit` Horner, tier4-anneal)** | **0.40** | **0.97** | **0.95** (T4 **0.96**) | **4** | **LIVE & REGISTERED** `MCarreira/recurrent-v4` @ `467ad5d7180bbfae21b55185cfeca22e2e18b458` |
 | recurrent-v5 (WIDTH-20, same recipe widened, tier5-anneal) | 0.47 | 0.98 | 0.90 (T4 0.88, **T5 0.80**) | 3 | NOT submitted — scaling result `MCarreira/recurrent-v5` @ `3a6a45aea9...e54569ff52` |
+| recurrent-v6 (WIDTH-20, **2× DEPTH ~20M**, tier5-focus + anneal) | 0.46 | 0.98 | 0.90 (T4 0.86, **T5 0.72**) | 3 | NOT submitted — **capacity NEGATIVE** `MCarreira/recurrent-v6` @ `275c14078f...2740c50f12` |
+
+**recurrent-v6 — CAPACITY IS NOT THE LEVER (official Playground, 2026-07-02).** The
+clean "does more capacity clear tier 5?" test: same recipe made **deeper** (8→14
+layers, ~11M→~20M, warm-started from v5 with the 6 new layers near-identity),
+tier-5-weighted mix, finishing anneal. **Result: it made tier 5 WORSE.** Dev looked
+promising (touched H>90=5 on favourable draws, settled center t5 ~0.86) but the
+official secret-seed benchmark: T1 1.00, T2 0.98, T3 0.90, **T4 0.86, T5 0.72**,
+H>90=3, OA 0.46, 108 s. Official tier5 **0.72 < v5's 0.80** — doubling params LOWERED
+it. Diagnostic: the dev→official gap WIDENED with capacity (~0.06 at 11M → ~0.14 at
+20M) = the bigger model overfit the fixed-seed dev eval instead of generalizing
+(cherry-picking the dev-best checkpoint compounds it). CONCLUSION (corroborates
+Sneiderman/neural-horner): the tier-5 ceiling is **drift/generalization-limited, not
+capacity-limited**; the only remaining lever is exposure-bias / drift reduction
+(scheduled sampling, DAgger), not scale. A strong citable negative. v4 stays the
+submission; v5 stays the scaling point. Folded into WRITEUP as "Is the ceiling
+capacity or drift? A depth test that says drift."
+
 
 **recurrent-v5 — THE 20-DIGIT SCALING POINT (official Playground, 2026-06-28).**
 Same recipe, one literal widened (`WIDTH 10→20`), warm-started from v4, curriculum

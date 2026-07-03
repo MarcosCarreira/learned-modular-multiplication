@@ -155,6 +155,15 @@ def main():
     ap.add_argument("--empty-cache-every", type=int, default=0,
                     help="on MPS, release the cached allocator every N training steps "
                          "(bounds memory growth on long runs; 0 = off)")
+    ap.add_argument("--sched-samp", action="store_true",
+                    help="scheduled sampling (Bengio 2015): during training, feed the model its "
+                         "OWN predicted token for a fraction of completion positions instead of the "
+                         "ground truth, to attack exposure bias / rollout drift (the thing that caps "
+                         "long-scratchpad tiers). Costs a 2nd forward pass. Targets stay ground-truth.")
+    ap.add_argument("--ss-max", type=float, default=0.25,
+                    help="max self-substitution probability the ramp reaches (0.25 is gentle)")
+    ap.add_argument("--ss-ramp", type=float, default=0.5,
+                    help="fraction of --steps over which the substitution prob ramps 0 -> --ss-max")
     args = ap.parse_args()
     if args.d_model % args.heads != 0:
         raise SystemExit(f"--d-model ({args.d_model}) must be divisible by --heads ({args.heads}).")
@@ -256,7 +265,26 @@ def main():
                                              cap, args.curr_keep_full, band_w), dev)
         else:
             seq = to_t(make_batch(pools.train, args.batch, rng, arch, band_w), dev)   # (B,L)
-        logits = model(seq[:, :-1])                                       # (B,L-1,V)
+        inp = seq[:, :-1]                                                  # (B,L-1)
+        if args.sched_samp and step > args.warmup:
+            # SCHEDULED SAMPLING: replace a fraction p_sub of COMPLETION input tokens with the
+            # model's own predicted token, so it learns to keep computing correctly when its
+            # context contains its own (possibly wrong) earlier outputs -- i.e. reduce the
+            # rollout drift that caps long-scratchpad tiers. Targets stay ground-truth.
+            # NOTE (compositional caveat): later scratchpad fields depend on earlier acc values,
+            # so fixed ground-truth targets under substitution is the standard-but-approximate form;
+            # the stronger fix is DAgger with an expert relabel (recompute the correct continuation
+            # from the model's *carried* acc) -- see run_recurrent_ss.py header. Start gentle (ss-max 0.25).
+            p_sub = args.ss_max * min(1.0, step / max(1, int(args.steps * args.ss_ramp)))
+            with torch.no_grad():
+                pred = model(inp).argmax(-1)                              # (B,L-1) TF one-step preds
+            L1 = inp.shape[1]
+            col = torch.arange(L1, device=dev)
+            allowed = (col >= arch.PROMPT_LEN).unsqueeze(0)               # only generated-region cols
+            mask = (torch.rand(inp.shape, device=dev) < p_sub) & allowed
+            pred_shift = torch.cat([inp[:, :1], pred[:, :-1]], dim=1)     # pred_shift[:,j]=pred[:,j-1]
+            inp = torch.where(mask, pred_shift, inp)
+        logits = model(inp)                                               # (B,L-1,V)
         tgt = seq[:, 1:]
         per = loss_fn(logits.reshape(-1, arch.VOCAB), tgt.reshape(-1)).reshape(tgt.shape)
         loss = (per * comp).sum() / (comp.sum() * seq.shape[0])

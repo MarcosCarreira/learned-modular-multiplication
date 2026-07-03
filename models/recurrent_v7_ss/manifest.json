@@ -1,0 +1,7 @@
+{
+  "entry_class": "model.ScratchpadModel",
+  "output_base": 10,
+  "framework": "pytorch",
+  "model_description": "Same architecture as recurrent_v6 (~20M params, d_model 384, 14 layers, 8 heads, 20-digit WIDTH-20 interleaved-Horner scratchpad, p < 2^64). The difference is TRAINING, not architecture: fine-tuned from v6 with SCHEDULED SAMPLING (Bengio et al. 2015) to attack rollout drift / exposure bias -- the coverage-over-the-rollout failure (not a capacity ceiling) that caps long-scratchpad tiers. During training the model is fed its own predicted scratchpad tokens for a ramped fraction of positions, so it learns to keep computing correctly from its own (possibly drifted) context. Inference is unchanged: acc=0; for each digit b_i MSB->LSB, m_i=a*b_i, t_i=acc*10+m_i, acc=t_i mod p; R=acc. For p>=1e20 emits 0.",
+  "training_description": "Warm-started from the annealed recurrent_v6 checkpoint (verbatim, same 14-layer arch), then fine-tuned with scheduled sampling (--sched-samp, ss-max 0.3 ramped over half the run) at low LR, no curriculum, tier-5-weighted-but-diverse band mix. Held-out split (disjoint train/val prime pools). Targets stay ground-truth; the substituted inputs expose the model to its own error distribution to reduce the ~20-step generation drift. a%p,b%p legal two-operand reductions; answer is the model's generated acc (collapses under weight perturbation); no hand-coded arithmetic, no Barrett/Montgomery/CRT, no lookups. See dev/train_recurrent.py (scheduled-sampling two-pass)."
+}

@@ -329,6 +329,41 @@ raised to cut the step count; it cannot — a base-1000 chunk makes each step a
 trivial `a · digit` step is load-bearing: per-step learnability dominates
 step-count. That negative is itself part of the result.)*
 
+## Is the ceiling capacity or drift? A depth test that says drift
+
+The twenty-digit tier sits below the bar (0.80 official), and the obvious hypothesis
+is **capacity**: a fixed ~11M-parameter budget, spread across five tiers of long
+sequences, simply runs out. We tested it directly, because it is the one hypothesis
+that a single well-designed run can settle. A ~20M-parameter model — the *same*
+recipe made **deeper** (8 → 14 layers, same width, warm-started from the ten-digit
+model with the six new layers inserted **near-identity** so it begins at the smaller
+model's function and only adds refinement), fine-tuned with a tier-5-weighted mix and
+a finishing anneal — is the clean "does capacity help?" experiment.
+
+It does not — and it fails in a diagnostic way. On the fixed-seed dev eval the deeper
+model looked promising: it *touched* all five tiers at ≥ 0.90 on favourable draws.
+But that was the top of an oscillation, not its centre, and the honest number is the
+official secret-seed benchmark — where the bigger model came in **below the smaller
+one**: tier 5 **0.72** (vs the ten-digit model's 0.80), tier 4 0.86, frontier
+`H>90 = 3`. Doubling the parameters did not raise the twenty-digit tier; it *lowered*
+it. And the mechanism is visible in the numbers: the gap between the fixed-seed dev
+score and the secret-seed official score **widened with capacity** — ≈ 0.06 at ~11M,
+≈ 0.14 at ~20M. The larger model spent its extra capacity **overfitting the
+evaluation distribution**, not learning to generalise further. (Selecting the
+checkpoint on that same dev eval compounds the effect — a methodological caution
+worth stating on its own.)
+
+The reading is unambiguous, and it matches the concurrent neural-Horner report: the
+long-rollout ceiling is **not a representational or capacity limit but a
+coverage-and-drift limit** — error compounding across the generated steps, and the
+decoder failing to stay on-policy on operands drawn from a distribution it did not
+train against. More parameters make a longer, drift-prone rollout easier to *overfit*,
+not easier to keep *correct*. If the twenty-digit tier is to be cleared, the lever is
+exposure-bias / drift reduction (scheduled sampling, on-policy DAgger), **not scale**.
+That is the sharp — and, going in, genuinely uncertain — negative this experiment
+contributes: for this problem, depth is not the missing ingredient, and a direct test
+at 2× scale was the only way to know it rather than assume it.
+
 ## A note on the "it's trivial" file
 
 Mid-competition, a strong entrant argued the task is trivial and posted
@@ -383,6 +418,37 @@ generalisation across operand length. Second, the scratchpad idea (Lee et al. 20
 Nye et al. 2021), the Abacus digit-position embeddings (McLeish et al. 2024), the
 operand curriculum, and the depth-limit theory are all off the shelf; the novelty
 is the assembly and the result, not the parts.
+
+**Concurrent work — independent convergence on "neural Horner."** During the
+competition a second entrant (Sneiderman, *neural-horner*[^horner]) arrived
+independently at the same core idea from the other direction: a learned per-step
+transition run inside a fixed reduce loop, `s' = (2s + d·x) mod p`, with the loop as
+control flow and the arithmetic entirely neural (randomise the weights and accuracy
+collapses — the same compliance argument). Two design axes differ, and the contrast
+is instructive. His transition is a GRU cell where ours is an autoregressive
+transformer; and, more tellingly, his loop is **base-2 / bit-serial** — one bit per
+step, so ~2048 steps for the largest primes — where ours is **base-10 / digit-serial**
+at ~one step per decimal digit (twenty steps at tier 5). His reported diagnosis
+converges with ours and sharpens it: **capacity is not the limiting factor** — a
+one-step overfit of the cell fits every operand family in isolation; the wall is
+*coverage/drift over the long rollout*, with the residual concentrated on the
+sparse-input (Fermat-adjacent) family. That is precisely the exposure-bias/
+error-compounding account we give for the tier-5 ceiling, from a different
+architecture and radix — and it carries a design corollary: because drift compounds
+with the number of generated steps, spending ~2048 steps (base-2) rather than ~20
+(base-10) makes the rollout that much harder to keep on-policy. The same
+*per-step-learnability-vs-step-count* trade-off that killed our base-1000 direction
+(too few, unlearnable steps) bites at the other extreme too (too many, drift-prone
+steps); base-10 sits at a workable middle. A controlled base-2-vs-base-10 ablation in
+one harness would quantify this, and is the cleanest single experiment the two lines
+suggest.
+
+[^horner]: R. Sneiderman, *neural-horner* (github.com/Robby955/neural-horner),
+    shared on the competition forum. Concurrent and independent; cited for the
+    convergence and the capacity-is-not-the-wall diagnosis, not as prior art. Whether
+    a loop-schedule wrapping a learned cell is deemed compliant was, at the time of
+    writing, an open question for the organisers — one that applies equally to the
+    scratchpad here.
 
 Stated with the restraint it deserves: this *appears* to be a positive
 cross-prime-generalisation-and-scaling result for learned modular multiplication,
@@ -444,11 +510,13 @@ The checklist to turn this from a competition result into a citable paper:
    the depth-versus-recurrence claim rather than inherit it from Lauter's report.
 5. **Push the scaling curve** — *partly done*: tier 5 (twenty digits) reads 0.80 on
    the official benchmark, so the curve is 0.98 / 0.90 / 0.88 / 0.80 across 2 / 5 / 10
-   / 20 digits and is bending, not breaking. What remains is (a) multi-seed bands at
-   each width, (b) more capacity (the fixed ~11M budget, spread across five tiers of
-   longer sequences, is what pulls tier 5 below the bar — a larger model is the test
-   of whether the slope is fundamental or just capacity-limited), and (c) tier 6+ to
-   find where linear-depth finally meets the fidelity wall.
+   / 20 digits and is bending, not breaking. The capacity question is now **answered**
+   (see the depth test above): a 2× model *lowered* official tier 5 and widened the
+   dev→official gap, so the slope is drift-limited, not capacity-limited. What remains
+   is (a) multi-seed bands at each width; (b) the drift lever the negative points to —
+   scheduled sampling / on-policy DAgger, the honest next experiment (Sneiderman
+   reports DAgger variants close one operand family while breaking another, so this is
+   open, not a formality); and (c) tier 6+ to find where the drift wall finally bites.
 
 ## The fine print (compliance)
 
