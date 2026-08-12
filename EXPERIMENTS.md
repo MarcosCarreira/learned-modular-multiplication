@@ -190,7 +190,62 @@ Smoke tests: `run_smoke.py` (digit), `run_smoke_p.py` (residue).
 
 ## Compliance invariants (every submission)
 
-Answer from trained params (weight-perturbation collapses it); `a%p`, `b%p`
-legal two-operand reductions only; no `a*b%p` formed in code; no sympy/Barrett/
-CRT/lookup in the forward path; deterministic on CPU (`MODCH_FORCE_CPU=1`);
-dev-only sympy stays in `dev/`, never in a submission dir.
+Answer from trained params (weight-perturbation collapses it); no `a*b%p` formed
+in code; no sympy/Barrett/CRT/lookup in the forward path; deterministic on CPU
+(`MODCH_FORCE_CPU=1`); dev-only sympy stays in `dev/`, never in a submission dir.
+
+**CORRECTION (organizer ruling, 2026-07-02, reaffirmed 2026-07-14):** the earlier
+invariant "`a%p`, `b%p` legal two-operand reductions" is **WRONG** — input must be
+raw `(a, b, p)`; reducing the full-width operands mod p is a *core part of the task*
+and may not be done in preprocessing (`operand_bits` is ~2–4× the prime bits on
+purpose). The whole v3–v6 line pre-reduced and is therefore **out of spec**. The
+`digit_transformer` reference example that appeared to bless pre-reduction was
+confirmed an error in the rules, not a precedent. See the Final result below.
+
+## Final result (compliant) — 2026-08-12
+
+**Submission (scored):** `MCarreira/recurrent-raw` @
+`f9a757ab5c52d12f0beb6fc76b43a9ff326f327f` — takes RAW `(a, b, p)`, reduces the
+full-width operands **in-network**. One learned primitive
+`cell(acc, m, digit) = (acc·R + m·digit) mod p` on a fixed two-phase schedule:
+Phase 1 reduces `a mod p` (Horner over `a`'s raw digits, `m=1`), Phase 2 multiplies
+over `b`'s raw digits (`m = a_red`). Verified arithmetically exact over 60k cases;
+tiers 1–3 range (raw operands to 64 bits). Official Playground (1100 cases, det., 11 s):
+
+| tier | official | dev | dev→official shave |
+|---|---|---|---|
+| T1 | **1.00** | 1.00 | — |
+| T2 | **0.97** | 0.99 | −0.02 |
+| T3 | 0.69 | 0.84 | **−0.15** |
+| T4–T10 | ~0.02 (emits 0) | — | — |
+
+→ **Frontier T2, compliant `H>90 = 2`, OA 0.28.** First *valid* entry; replaced the
+out-of-spec `recurrent-v4`.
+
+**Tier 3 is drift-limited — confirmed THREE independent ways (all negative):**
+
+1. **Capacity — no.** 2× depth (v6, 8→14 layers, ~20M) *lowered* the frontier tier on
+   the sub-problem and widened the dev→official gap (more overfitting, not more correct
+   rollout).
+2. **Harder on-policy — no.** `recurrent_raw_t3d`: scheduled sampling 0.30→0.55,
+   warm-started from the T3 best, tracked the prior run step-for-step and plateaued at
+   the same place. Stopped.
+3. **Inference-time self-consistency — no (decisive).** 3-model rule allowed; submitted
+   two voting variants (same weights, majority vote over 7 sampled rollouts, seeded for
+   determinism, config in manifest). Both **COMPLETED** on the Playground. Tier 3:
+   **0.69 greedy / 0.68 @ temp 0.5 / 0.69 @ temp 0.8** — flat. Raising temperature
+   diversified rollouts and the vote still didn't move → the tier-3 errors are
+   **systematic** (the model reduces the same cases wrong every sample), not stochastic.
+   Self-consistency can only rescue stochastic noise; here it rescues nothing.
+
+**Verdict:** the long-rollout ceiling is **systematic drift**, not capacity and not
+sampling variance — corroborated independently by Sneiderman (`neural-horner`, base-2
+GRU) and Lei (radix-4 fork; L2-SP/EWC found to *relocate* interference, not remove it).
+Breaking it needs a lever that changes what the parameters *compute* on the drift-prone
+cases (expert-relabel DAgger with correct-continuation targets, or a shorter reduction
+rollout) — filed, not pursued. **Competition arc closed: compliant `H>90 = 2` banked.**
+
+New files this phase: `models/recurrent_raw{,_t3,_t3d,_vote05,_vote08}/`,
+`run_recurrent_raw*.py`, `run_upload_votes.py`; voting + manifest-config +
+deterministic seed in `models/recurrent_raw/model.py` (env `MODCH_VOTES`/`MODCH_TEMP`
+for local sweeps; manifest `votes`/`temp`/`seed` for the self-contained submission).
