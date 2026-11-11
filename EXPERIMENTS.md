@@ -210,17 +210,21 @@ full-width operands **in-network**. One learned primitive
 `cell(acc, m, digit) = (acc·R + m·digit) mod p` on a fixed two-phase schedule:
 Phase 1 reduces `a mod p` (Horner over `a`'s raw digits, `m=1`), Phase 2 multiplies
 over `b`'s raw digits (`m = a_red`). Verified arithmetically exact over 60k cases;
-tiers 1–3 range (raw operands to 64 bits). Official Playground (1100 cases, det., 11 s):
+tiers 1–3 range (raw operands to 64 bits). Scores (1100 cases, det., 11 s):
 
-| tier | official | dev | dev→official shave |
+| tier | official Stage-1 | Playground (submit) | dev |
 |---|---|---|---|
-| T1 | **1.00** | 1.00 | — |
-| T2 | **0.97** | 0.99 | −0.02 |
-| T3 | 0.69 | 0.84 | **−0.15** |
-| T4–T10 | ~0.02 (emits 0) | — | — |
+| T1 | **1.00** | 1.00 | 1.00 |
+| T2 | **0.97** | 0.97 | 0.99 |
+| T3 | **0.86** | 0.69 | 0.84 |
+| T4–T10 | ~0.02 (emits 0) | ~0.02 | — |
 
-→ **Frontier T2, compliant `H>90 = 2`, OA 0.28.** First *valid* entry; replaced the
-out-of-spec `recurrent-v4`.
+→ **Frontier T2, compliant `H>90 = 2`, OA 0.297 official (0.28 Playground).** First
+*valid* entry; replaced the out-of-spec `recurrent-v4`. **Stage-1 published 2026-11-11:
+the ONLY submission in the evaluated field with an *Accepted* compliance review — every
+other team (incl. all 100% scorers with hand-coded fixed programs) flagged Warning/Late/
+Error.** T3 is high-variance across draws (0.69–0.86, never ≥0.90); T2 (2-step rollout)
+is rock-steady — consistent with the drift reading below.
 
 **Tier 3 is drift-limited — confirmed THREE independent ways (all negative):**
 

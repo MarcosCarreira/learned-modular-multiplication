@@ -12,8 +12,12 @@
 `(a, b, p)`** and reduces the full-width operands *inside the network* — the
 operand reduction being, by the organisers' ruling, the intended core of the task.
 It scores **`H>90 = 2`** on the official evaluation (tier 1 1.00, tier 2 0.97,
-tier 3 0.69; `MCarreira/recurrent-raw`, deterministic, 11 s / 1100). Tier 3 does
-not clear the 90% bar, and the reason is the scientific contribution of this note:
+tier 3 0.86; `MCarreira/recurrent-raw`, deterministic, 11 s / 1100), and in the
+published Stage-1 results (Nov 2026) it was **the only submission in the evaluated
+field to receive an *Accepted* compliance review** — every other team, including
+all those scoring 100% with hand-coded fixed-program constructions, was flagged.
+Tier 3 does not clear the 90% bar, and the reason is the scientific contribution of
+this note:
 the ceiling is **rollout drift**, not capacity — a conclusion now confirmed three
 independent ways (a 2× deeper model, harder on-policy training, and inference-time
 self-consistency all fail to move it). Everything in the TL;DR below about clearing
@@ -406,9 +410,12 @@ arithmetically exact over 60k raw-operand cases; sized for tiers 1–3 (raw oper
 bits).
 
 Trained from scratch on raw operands, the compliant model **clears tiers 1 and 2 —
-`H>90 = 2`**. On the official evaluation hardware (`MCarreira/recurrent-raw`, 1100
+`H>90 = 2`**. On the official Stage-1 evaluation (`MCarreira/recurrent-raw`, 1100
 problems, deterministic, 11 s against the 300 s budget): tier 1 **1.00**, tier 2
-**0.97**, tier 3 **0.69**. Two findings sharpen it:
+**0.97**, tier 3 **0.86**. (At submission an earlier SAIR Playground draw read tier 3
+at **0.69** on the same weights — the baseline the on-the-day experiments below were
+measured against. Tier 3 is high-variance across evaluation draws, landing anywhere
+from ~0.69 to ~0.86 and never clearing the 90% bar.) Two findings sharpen it:
 
 - **Tier 2's apparent difficulty was a measurement artefact.** Tier 2 has only ~48
   primes total, and a held-out split scored the model on primes the benchmark never
@@ -416,14 +423,15 @@ problems, deterministic, 11 s against the 300 s budget): tier 1 **1.00**, tier 2
   all 48 — legitimate, since it must still generalise across *operands* — tier 2 went
   from 0.17 to **0.99 dev / 0.97 official.** The reduction was always learnable there; the
   0.17 was the split, not the task.
-- **Tier 3 is drift-limited, and the dev→official shave says so out loud.** Tier 3 is a
+- **Tier 3 is drift-limited, and its variance across draws says so.** Tier 3 is a
   ~40-step two-phase rollout at twenty-digit width. An on-policy fine-tune (scheduled
-  sampling) lifted its *dev* accuracy from 0.70 to 0.84 but could not break 0.90 — and on
-  the secret-seed official set it lands **0.69**. That gap is the tell: tier 2 shaved only
-  0.02 dev→official (0.99→0.97) while tier 3 shaved **0.15** (0.84→0.69). The longer the
-  rollout, the worse it generalises to unseen primes — error compounding over the
-  generated steps, exactly the coverage/drift mechanism the sub-problem predicted, now on
-  the operand-reducing task the challenge actually intends.
+  sampling) lifted its *dev* accuracy from 0.70 to 0.84 but could not break 0.90, and on
+  held-out evaluation draws it lands anywhere in the **0.69–0.86** band — never the 90%
+  bar. Tier 2, a two-step rollout, is rock-steady by contrast (0.97–0.99 everywhere). The
+  longer the rollout, the more the result depends on the exact prime sample and the worse
+  its worst-case generalisation: error compounding over the generated steps, exactly the
+  coverage/drift mechanism the sub-problem predicted, now on the operand-reducing task the
+  challenge actually intends.
 
 **Three independent tests, one verdict: the wall is drift, not capacity — and the drift is
 *systematic*.** By the last day of the competition the tier-3 ceiling had been probed from
@@ -440,8 +448,9 @@ did not move this one:
    answer as a majority vote over seven sampled rollouts (the challenge allows up to three
    models per team; two voting variants were submitted alongside the greedy model, both
    confirmed `COMPLETED` and deterministic on the Playground) left tier 3 exactly where it
-   was: **0.69 greedy, 0.68 at sampling temperature 0.5, 0.69 at temperature 0.8.** Raising
-   the temperature genuinely diversified the rollouts and the vote *still* did not move.
+   was on that Playground draw: **0.69 greedy, 0.68 at sampling temperature 0.5, 0.69 at
+   temperature 0.8.** Raising the temperature genuinely diversified the rollouts and the
+   vote *still* did not move.
    That distinguishes the two kinds of drift: self-consistency rescues *stochastic* errors
    (noise around a correct mode) but not *systematic* ones — and here it rescues nothing,
    so the model is reducing the same tier-3 cases wrong on **every** sample. The wall is
